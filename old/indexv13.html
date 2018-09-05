@@ -1,0 +1,457 @@
+<!DOCTYPE html>
+
+<!-- TODO
+	move start of legend to within set legend function
+	trace logic to make sure it looks good
+		after check, try submitting functions in browser console.
+		or, turn off all functions from firing on load
+		make them all just available
+		and see if i can make the browser do what I want
+
+
+ -->
+<html lang="en">
+  <h1>U.S. <span id="crop-value"></span> in <span id="year-value"></span></h1>
+  <svg width="960" height="600"></svg>
+  	
+
+  <head>
+  	<meta charset="utf-8"/>
+    <script type="text/javascript" src="libraries/d3.min.js"></script>
+    <script src="https://d3js.org/d3-scale-chromatic.v1.min.js"></script>
+    <script src="https://d3js.org/topojson.v2.min.js"></script>
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.3.1/jquery.min.js"></script>
+
+    <style>
+    .states {
+	  fill: none;
+	  stroke: #fff;
+	  stroke-linejoin: round;
+	}
+	</style>
+    <script>
+    	/* this version, number 9, 
+    	* has functions working to connect all ag data and single crop data
+    	*  the functions are chained together to work logically
+    	*       add more crops!
+    	*		add text description
+    	*		format crop menu and slider-
+    	*		move libraries and map json to local drive
+    	*       
+    	*
+    	*   will try to add array of color functions
+    	*
+    	*/		 
+
+    	// global variables to set, intialized here with defaults
+    	//var isall = true; // controls toggle from all to any one
+    	var mymap; // global for map data
+    	var cropdata; // all data on selected crop
+		var cropyeardata = d3.map(); // data for crop and year selected
+		var crop = "allag"; // global crop name, default set, controls toggle form all to any one
+		var year = 2012; // global year, default set
+		var mycolor = d3.scaleThreshold(); // color function
+		var finalcolor; // set it empty
+		var newrange = []; // for range we use in color function
+
+		// stuff for color function
+		// dict of maxes and crops
+		var cropmaxes = {
+	    	cattle: 1080000,
+			chickens: 10651369,
+			corn: 403830,
+			cotton: 465200,
+			hogs: 2300000,
+			dairy_cow: 485000,
+			soybeans: 539000,
+			wheat: 642600,
+
+		};
+		// makes range for doing math later
+		var myrange = d3.range(1,9)
+		var mymax = 0;
+		// need this for colors
+		var blank = "#DCDCDC"; // makes no data spaces gray
+
+		// dict of years for slider
+		var cropyears = {
+			cattle: [1920, 2017,],
+			corn: [1910, 2016],
+			chickens: [1974, 2012],
+			cotton: [1928, 2012],
+			hogs:[1919, 2016],
+			dairy_cow: [1920, 2017],
+			soybeans: [1927, 2016],
+			wheat: [1918, 2007],
+		}
+		var yearmax;
+		var yearmin;
+		var yearinterval;
+
+		//set up svg
+    	var svg = d3.select("svg"),
+	    width = +svg.attr("width"),
+	    height = +svg.attr("height");
+
+		var path = d3.geoPath();
+		var g = svg.append("g")
+		    .attr("class", "key")
+		    .attr("transform", "translate(0,40)");
+
+		// locate legend with these
+		var xlegend = 830;
+		var ylegend = 480;
+
+		var color_code = [ ['CATTLE', '#8dd3c7'],
+                  ['CORN', '#ffffb3'],
+                  ['COTTON', '#bebada'],
+                  ['FRUITS & TREE NUTS', '#fb8072'],
+                  ['HOGS', '#80b1d3'],
+                  ['MILK', '#fdb462'],
+                  ['NURSERY','#b3de69'],
+                  ['POULTRY', '#fccde5'],
+                  ['SOYBEANS', "#ffed6f"],
+                  ['VEGETABLES', '#bc80bd'],
+                  ['WHEAT', '#ccebc5'],
+                  ['Not enough data',  '#DCDCDC']
+                  ];
+        
+        
+		// start legend
+		svg.append("text")
+	        .attr("y", ylegend - 25)
+	        .attr("x", xlegend )
+	        .text("Acres||head / county (up to)")
+
+	    svg.append("text")
+	        .attr("y", ylegend - 10)
+	        .attr("x", xlegend )
+	        .text("(up to)")
+
+
+		// function to retrieve map data
+		function getmapdata(){
+			d3.json("https://d3js.org/us-10m.v1.json", function(data) {
+
+				mymap = data;
+				//console.log(mymap);
+
+				// this is the callback function. make it what I want
+				allcropready();
+				
+			});
+			
+		}
+
+		// this works. It changes the global variable cropdata, but I struggle with the timing
+    	function updatecropdata(){
+    		d3.select("#crop-value").text(crop);
+
+    		d3.text(crop + "_pivot_table.csv", function(d) {
+    
+		    var dsv = d3.dsvFormat(',');
+		    cropdata = dsv.parse(d);
+
+		    cropready(drawmap);
+
+			});
+    		
+    	}
+
+    	function setonecolorfunction(){
+    		
+
+	    	mymax = cropmaxes[crop]; // gets max for crop selected
+	    	newrange = []; 
+	    	// creates bins based on max chosen
+			for (i = 0; i < myrange.length; i++) { 
+				newrange.push((myrange[i]/8) * mymax) 
+			};
+			// sets color function
+			mycolor = d3.scaleThreshold()
+	    		.domain(newrange)
+	   			.range(d3.schemeBlues[9].slice(1));
+
+	   		finalcolor = mycolor;
+    	}
+
+    	function allcolorfunction(color){
+		  return color;
+		}
+        
+        // I don't think this is being called because I get getting a message that finalcolor isn't a function
+		function setallcolorfunction(){
+			finalcolor = allcolorfunction;
+		}
+
+    	// sets the max min step and starting value of slider
+    	// is a little funky. changes values in inspect element but not in view page source
+    	// some sources say the source is the original html whereas inspect element
+    	// shows the html as the browser is rendering it, some even say inspect element shows 
+    	// changes from javascript. if that's true, then it's behaving as it should then
+        function setslider(){
+            if (crop == "allag") {
+            	yearmin = 1997;
+            	yearmax = 2012;
+            	yearinterval = 5;
+            	value = 2012;
+            } else {
+	            yearmin = cropyears[crop][0];
+	            yearmax = cropyears[crop][1];
+	            yearinterval = 1;
+        	}
+
+            $("#year_slider").attr({
+            	"max": yearmax,
+            	"min": yearmin,
+            	"step": yearinterval,
+            	"value": yearmax,
+            });
+            
+        }
+
+        function addlegend(){
+        	ylegend = 480;
+        	// if there is a legend, removes it
+        	if (d3.select("#legendtext")){
+        		d3.selectAll("#legendtext").remove();
+        		d3.selectAll("#legendrects").remove();
+        	}
+        	// adds legend
+			for ( var row = 1; row < 8; row++) {
+			    svg.append("rect")
+			      .attr("id", "legendrects")
+			      .attr("width", 12)
+			      .attr("height", 12)
+			      .style("fill", d3.schemeBlues[9].slice(1)[row])
+			      .attr("y", ylegend) 
+			      .attr("x", xlegend);
+
+			    ylegend +=12;
+			    //console.log(color_code[row][1]);
+			}
+			ylegend += 12;
+
+			for ( var row = 8; row >= 1; row--) {
+			     svg.append("text")
+			        .attr("id", "legendtext")
+			        .attr("y", ylegend - 2)
+			        .attr("x", xlegend + 15)
+			        .text(newrange[row])
+			        //.attr("font-family", "sans-serif")
+			        .attr("font-size", "10px")
+			        .attr("fill", "black");
+
+			        //row = row -1;
+			        if (row < 9) {
+			          ylegend -=12;
+			        }
+			  }
+        }
+
+        function alladdlegend() {
+		// adds legend
+		   ylegend = 480;
+
+		  //first get rid of any existing legend
+		  if (d3.select("#legendtext")){
+        		d3.selectAll("#legendtext").remove();
+        		d3.selectAll("#legendrects").remove();
+        	}
+
+		  for ( var row = 0; row < color_code.length; row++) {
+		      svg.append("rect")
+		        .attr("id", "legendrects")
+		        .attr("width", 12)
+		        .attr("height", 12)
+		        .style("fill", color_code[row][1])
+		        .attr("y", ylegend) 
+		        .attr("x", xlegend);
+
+		      ylegend +=12;
+		  }
+
+		  for ( var row = color_code.length -1; row >= 0; row--) {
+		       svg.append("text")
+		          .attr("id", "legendtext")
+		          .attr("y", ylegend - 2)
+		          .attr("x", xlegend + 15)
+		          .text(color_code[row][0])
+		          //.attr("font-family", "sans-serif")
+		          .attr("font-size", "10px")
+		          .attr("fill", "black");
+		          ylegend -=12;
+		    }
+		}
+
+    	// produces a dict of fips and values
+    	function updatecropyeardata(){
+    		cropyeardata = d3.map(); // clears out the data, otherwise we get old data being used to draw new map
+    		var i = 0;
+    		d3.select("#year-slider-value").text(year);
+    		d3.select("#year-value").text(year);
+	    	// change cropyeardata info  
+	    	for (i in cropdata) {
+	     	cropyeardata.set(cropdata[i].id, cropdata[i][year]); 
+   	
+
+    		};
+    	}
+
+    	function allupdatecropyeardata(){
+    		cropyeardata = d3.map(); // clears out the variable
+
+    		// Change some text
+    	    d3.select("#year-slider-value").text(year);
+    		d3.select("#year-value").text(year);
+
+		    d3.tsv("ag_" + year + ".tsv", function(d) {
+		      
+		        // change usofag info  
+		        for (i = 0; i < d.length; i++) {
+		        cropyeardata.set(d[i].id, d[i].color);  
+		        }
+		         drawmap();
+		    });
+		   
+		}
+
+    	// should work
+    	function drawmap(error){
+    		if (error) throw error;
+
+    		if(d3.selectAll("path")){
+    			d3.selectAll("path").remove();
+    		}
+
+    	    // requires: mymap, usofag/cropyeardata, colorfuntion:mycolor
+    	    svg.append("g")
+	          .attr("class", "counties")
+	          .selectAll("path")
+	          .data(topojson.feature(mymap, mymap.objects.counties).features)
+	          .enter().append("path")
+	            .attr("fill", function(data) { 
+	            	if (cropyeardata.get(data.id)){ 
+	            		return finalcolor(cropyeardata.get(data.id));
+	            	} else{
+	            		return blank} ; 
+	            	}) // makes alaska gray, no data
+	          .attr("d", path);
+	          //.append("title")
+	          //.text('hello');
+
+	        
+	        svg.append("path")
+		      .datum(topojson.mesh(mymap, mymap.objects.states, function(a, b) { return a !== b; }))
+		      .attr("class", "states")
+		      .attr("d", path);
+		}
+    	
+    	// manage views functions
+    	function cropready(_callback) {
+    		updatecropyeardata();
+    		setonecolorfunction();
+    		setslider();
+    		addlegend();
+
+    		_callback();
+    	}
+
+    	function allcropready() {
+    		d3.select("#crop-value").text("Agriculture");
+
+    		alladdlegend();
+    		setslider();
+    		setallcolorfunction();
+    		allupdatecropyeardata();
+
+    		//drawmap();
+    	}
+
+    	// I don't think I need this
+    	/*function allcropready(_callback) {
+    		alladdlegend();
+    		setslider();
+    		setallcolorfunction();
+
+    		_callback();
+    	} */ 
+
+    	function yearready(_callback) {
+    		updatecropyeardata();
+
+    		_callback();
+    	}
+
+
+    	function allyearready(_callback) {
+    		allupdatecropyeardata();
+    		
+    		_callback();
+    	}
+
+    </script>
+	</head>
+	<body>
+		
+		<div class="slidecontainer">
+			
+		    Year 
+		    <input type="range" min="1" max="100" value="50" step="1" class="slider" id="year_slider">
+		    <label for="year_slider" 
+		        style="display: inline-block; width: 240px; text-align: left">
+		        <span id="year-slider-value">…</span>
+		    </label>
+		</div>
+		<form id="nameform">
+			Crop
+		    <select id="selectcrop">
+		        <option value="allag">All crops</option>
+	    	    <option value="cattle">Cattle</option>
+	    	    <option value="chickens">Chickens</option>
+	    	    <option value="corn">Corn</option>
+	    	    <option value="cotton">Cotton</option>
+	    	    <option value="dairy_cow">Dairy Cows</option>
+	    	    <option value="hogs">Hogs</option>
+	    	    <option value="soybeans">Soybeans</option>
+	    	    <option value="wheat">Wheat</option>
+	    	</select>
+	    	
+	    </form>
+		<script type="text/javascript">
+
+			// TODO: Add if statements based on if all a
+			// on change year, call updatecropyeardata
+			d3.select("#year_slider").on("input", function() {
+				year = +this.value;
+			    if (crop=="allag"){
+			    	allyearready(drawmap);
+			    }
+			    else {
+			    	yearready(drawmap);
+			    }
+			});
+
+			// 
+			var selectBox = document.getElementById("selectcrop");
+		    selectBox.addEventListener("change", function(){
+		    	var e = document.getElementById("selectcrop")
+		    	crop = e.options[e.selectedIndex].value;
+
+
+		    	if (crop == "allag"){
+		    		year = 2012;
+		    		allcropready();
+		    	} else {
+		    		year = cropyears[crop][1];
+		    		updatecropdata();
+		    	}
+
+			});
+			
+			getmapdata();
+			
+
+		</script>
+	</body>
+</html>

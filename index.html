@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+
+<html lang="en">
+<meta charset="utf-8"/>
+<div class="container">
+  <h1>The United States of Agriculture</h1>
+  <p>This map visualizes the main countours of agriculture in the U.S. It shows the chief agricultural product of every county in the United States for 1997-2012. 
+  You can also explore choropleths to see the distribution of some of the main commodities individually over longer spans of time. 
+  <p>All data from the <a href="https://quickstats.nass.usda.gov/">U.S. Department of Agriculture</a>. Analysis and visualization by <a href="http://ericjblom.com">Eric Blom</a>.
+ </div>
+  <div class="container">
+  	<h2>U.S. <span id="crop-value"></span> in <span id="year-value"></span></h2>
+  </div>
+  <div class="row, container">
+  <div class="slidecontainer, col-sm-8">
+			
+		     
+		    <input type="range" min="1" max="100" value="50" step="1" class="slider" id="year_slider">
+		    <label for="year_slider" 
+		        style="display: inline-block; width: 240px; text-align: left">
+		        Year
+		        <span id="year-slider-value">…</span>
+		    </label>
+  </div>
+  <div class="col-sm-4">
+		<form id="nameform">
+			Crop
+		    <select id="selectcrop">
+		        <option value="allag">All crops</option>
+	    	    <option value="cattle">Cattle</option>
+	    	    <option value="chickens">Chickens</option>
+	    	    <option value="corn">Corn</option>
+	    	    <option value="cotton">Cotton</option>
+	    	    <option value="dairy_cow">Dairy Cows</option>
+	    	    <option value="hogs">Hogs</option>
+	    	    <option value="soybeans">Soybeans</option>
+	    	    <option value="wheat">Wheat</option>
+	    	</select>
+	    	
+	    </form>
+  </div>
+</div>
+  <div class="container">
+    <svg width="960" height="600"></svg>
+  </div>
+
+
+  <head>
+  	
+    <script type="text/javascript" src="libraries/d3.min.js"></script>
+    <script src="https://d3js.org/d3-scale-chromatic.v1.min.js"></script>
+    <script src="https://d3js.org/topojson.v2.min.js"></script>
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.3.1/jquery.min.js"></script>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap.min.css">
+  <script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/js/bootstrap.min.js"></script>
+  <script src="usofag.js"></script>
+
+    <style>
+    .states {
+	  fill: none;
+	  stroke: #fff;
+	  stroke-linejoin: round;
+	}
+	</style>
+    <script>	 
+
+    	// global variables to set, intialized here with defaults
+    	//var isall = true; // controls toggle from all to any one
+    	var mymap; // global for map data
+    	var cropdata; // all data on selected crop
+		var cropyeardata = d3.map(); // data for crop and year selected
+		var crop = "allag"; // global crop name, default set, controls toggle form all to any one
+		var year = 2012; // global year, default set
+		var mycolor = d3.scaleThreshold(); // color function
+		var finalcolor; // set it empty
+		var newrange = []; // for range we use in color function
+
+		// stuff for color function
+		// dict of maxes and crops
+		var cropmaxes = {
+	    	cattle: 1080000,
+			chickens: 10651369,
+			corn: 403830,
+			cotton: 465200,
+			hogs: 2300000,
+			dairy_cow: 485000,
+			soybeans: 539000,
+			wheat: 642600,
+
+		};
+
+		var mycrops = ['CATTLE', 'NURSERY TOTALS', 'POULTRY TOTALS', 'COTTON', 'SOYBEANS',
+                         'HOGS', 'MILK', 'VEGETABLE TOTALS', 'No Data',
+                         'CORN', 'FRUIT & TREE NUT TOTALS', 'WHEAT']
+		// makes range for doing math later
+		var myrange = d3.range(1,9)
+		var mymax = 0;
+		// need this for colors
+		var blank = "#DCDCDC"; // makes no data spaces gray
+
+		// dict of years for slider
+		var cropyears = {
+			cattle: [1920, 2017,],
+			corn: [1910, 2016],
+			chickens: [1974, 2012],
+			cotton: [1928, 2012],
+			hogs:[1919, 2016],
+			dairy_cow: [1920, 2017],
+			soybeans: [1927, 2016],
+			wheat: [1918, 2007],
+		}
+		var yearmax;
+		var yearmin;
+		var yearinterval;
+
+		//set up svg
+    	var svg = d3.select("svg"),
+	    width = +svg.attr("width"),
+	    height = +svg.attr("height");
+
+		var path = d3.geoPath();
+		var g = svg.append("g")
+		    .attr("class", "key")
+		    .attr("transform", "translate(0,40)");
+
+		// locate legend with these
+		var xlegend = 830;
+		var ylegend = 420;
+
+		var color_code = [ ['CATTLE', '#8dd3c7'],
+                  ['CORN', '#ffffb3'],
+                  ['COTTON', '#bebada'],
+                  ['FRUITS & TREE NUTS', '#fb8072'],
+                  ['HOGS', '#80b1d3'],
+                  ['MILK', '#fdb462'],
+                  ['NURSERY','#b3de69'],
+                  ['POULTRY', '#fccde5'],
+                  ['SOYBEANS', "#ffed6f"],
+                  ['VEGETABLES', '#bc80bd'],
+                  ['WHEAT', '#ccebc5'],
+                  ['Not enough data',  '#DCDCDC']
+                  ];
+        
+        
+		
+
+    </script>
+	</head>
+	<body>
+		
+		
+		<script type="text/javascript">
+
+			// TODO: Add if statements based on if all a
+			// on change year, call updatecropyeardata
+			d3.select("#year_slider").on("input", function() {
+				year = +this.value;
+			    if (crop=="allag"){
+			    	allyearready(drawmap);
+			    }
+			    else {
+			    	yearready(drawmap);
+			    }
+			});
+
+			// 
+			var selectBox = document.getElementById("selectcrop");
+		    selectBox.addEventListener("change", function(){
+		    	var e = document.getElementById("selectcrop")
+		    	crop = e.options[e.selectedIndex].value;
+
+
+		    	if (crop == "allag"){
+		    		year = 2012;
+		    		allcropready();
+		    	} else {
+		    		year = cropyears[crop][1];
+		    		updatecropdata();
+		    	}
+
+			});
+			
+			getmapdata();
+			
+
+		</script>
+		<div class="container">
+			<h3>Conclusions</h3>
+			<p>
+This visualization demonstrates the how journalists can use new technological tools to tell stories. I used Python with Jupyter notebooks along with Javascript/D3.js, HTML and CSS to build this map. The map shows visualizatios can give broad overviews of subejcts that words alone have difficulty providing. It is also efficient by telling that overall story along with telling individual stories of every place in the country. Finally, it is compelling by bringing readers in and holding their interest.</p>
+<h3>Methods</h3>
+<p>Data came from the USDA National Agricultural Statistics Service. The all-agriculture maps used the dollar values of the sales of the listed commodities for its analysis. Then, I found the most valuable commodity to each county in each year and had that county filled with a corresponding color. I estimated the value of nursery products vegetables for the two earliest years because the USDA did not provide that data. To do so, I calculated the dollar in sales per acre for those commodities in later years. Then, I combined that figure with the acres planted in those crops in earlier years (while accounting for inflation) to estimate sales. The single-crop choropleths are based on either acres of a crop harvested or the number of head of a type of livestock. For more code, visit my <a href="https://github.com/ericjohannes">Github</a>.<p>
+	<h3>Trends</h3>
+	<p>The location of where an animal is raised or crop is grown can point to a range of interesting subjects. On the one hand, the location can point to climatic, technological and political factors that led a particular region to raise a crop. On the other hand,  a crop can impact the culture and environment of where it is raised or grown.</p>
+	<p>It is well-known that industrial-scale chicken farming causes environmental problems. Facilities raising thousands of chickens for meat in large warehouse-like buildings. Waste from those operations can runoff into waterways, causing pollution (Parker 2006). They also contaminate the air and expose workers to unhealthy environments. Articles reporting it say these so-called chicken ranches are in the South but are somewhat vague. “Since the early 1990s, observers say, thousands of chicken houses have cropped up across the South as consumer demand for poultry has grown,” Parker (2006) writes. The U.S. of Agriculture maps, however, show poultry is the chief product of swath from Georgia to Mississippi. This map tells you the problems associated with chicken ranches might be occurring throughout that swath of the country. </p>
+	<p>My project’s map also hints at how technology changes agriculture. Experts, such as Pruitt (2016) and Troyer (2009), write that over time corn breeds were developed to grow better in the shorter growing seasons of northern area, and for more arid climates prevalent further west. The U.S. of Agriculture maps show the Corn Belt spreading north and west between 1997 and 2012. The choropleth of corn shows the same pattern going back nearly 100 years. </p>
+	<p>Wheat also shrunk over time, both in territory and the number of acres planted. The USDA (2017) writes that wheat production has been on the decline due to increased competition from abroad and lower prices. The map shows poultry is concentrated in the South. I am still exploring this trend, but analysts say the poultr industry is heavily coordinated, concentrated and industrialized, and producers must be near processers and sources of feed (Lotterman 1998), which may contribute to the industry's compactness. Corn, soybeans and hogs have largely matching territory and expand together. That trend could be a result of the relationship between those commodities. Corn and soybeans are primary feeds of hogs, and farmers often rotate corn and soybeans (Lauer 2007, Stormont 2003).<p>
+	<h3>References</h3>
+	<p>Lauer, Joe; Paul Porter; and Ed Oplinger  The Corn and Soybean Rotation Effect April, 1997 Field Crops 27.426 and 28.426-14<br>
+Lotterman, Edawrd. “Poultry, a Quiet Success Story.” FedGazette. April 1, 1998.<br>
+
+Parker, Suzi. "How poultry producers are ravaging the rural South." Grist. February 22, 2006. Accessed October 22, 2017. http://grist.org/article/parker1/.<br>
+
+Pruitt, Jon Derek, "A Brief History of Corn: Looking Back to Move Forward," 2016.<br>
+
+Stormont, Leana E. “Overview of Hog Farming in Iowa." Animal Law Legal Center, 2003. Accessed March 12, 2018. https://www.animallaw.info/article/overview-hog-farming-iowa. <br>
+
+Troyer, A. Forrest. “Development of Hybrid Corn and the Seed Corn Industry.” Handbook of Maize: Genetics and Genomics, Springer, New York, NY, 2009, pp. 87–114. <br>
+
+United States Department of Agriculture. USDA - National Agricultural Statistics Service - Trends in U.S. Agriculture. 2017. Accessed March 12, 2018. https://www.nass.usda.gov/Publications/Trends_in_U.S._Agriculture/index.php. <br>
+
+USDA Econromic Research Service, “Wheat: Overview.” USDA, August 9, 2017. Accessed March 22, 2018.<br>
+
+
+
+</div>
+	</body>
+</html>
